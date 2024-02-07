@@ -23,8 +23,8 @@ from keras.optimizers import Adam
 from keras.callbacks import ModelCheckpoint
 import numpy as np 
 import nibabel as nib
-CUDA_VISIBLE_DEVICES = [1]
-os.environ['CUDA_VISIBLE_DEVICES']=','.join([str(x) for x in CUDA_VISIBLE_DEVICES])
+import matplotlib.pyplot as plt
+
 #oasis files 1-457
 # Please see line 1541 for the main essence of complementary network - i.e. summing up the intermediate outputs and then concatenating them for reconstruction layer
 #Hyper parameters to be set - 
@@ -56,12 +56,6 @@ os.environ['CUDA_VISIBLE_DEVICES']=','.join([str(x) for x in CUDA_VISIBLE_DEVICE
 
 import numpy as np
 import cv2
-
-
-
-
-
-
 
 #Dice coefficient
 
@@ -2556,33 +2550,83 @@ def CompNet(input_shape,learn_rate=1e-3):
        #metrics=[neg_dice_coef,'mae',dice_coef])
     return model
  
-
 # In[8]:
-
-
 model=CompNet(input_shape=(256,256,1))
 print(model.summary())
+model.load_weights('/Users/ravinduhettiarachchi/Documents/FYP/MyCode/3DCompNet/src/pretrained_comp_net_on_1st_fold_of_oasis.h5')
 
 
-# In[62]:
-X_train=np.load("X_train_new.npy")
-X_train=X_train.reshape(X_train.shape+(1,))
-y_train=np.load("y_train_new.npy").reshape(X_train.shape)
+# Path to the .img file 
+img_file_path = '/Users/ravinduhettiarachchi/Documents/FYP/DataSet/disc1/OAS1_0003_MR1/RAW/OAS1_0003_MR1_mpr-1_anon.img' 
 
-model.fit([X_train], [y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,X_train,X_train,X_train,X_train,X_train,X_train],
-                  batch_size=4,
-                  nb_epoch=10,
-                        #validation_data=([X2_validate],[y_validate]),
-                  shuffle=True)
-                        #callbacks=[xyz],
-                        #class_weight=class_weightt)
+# Load the Analyze file
+analyze_image = nib.load(img_file_path)
+
+# Convert the image data to a NumPy array
+analyze_data = analyze_image.get_fdata()
+
+z_slice_index = 50
+selected_slice = analyze_data[:, :,z_slice_index]
+
+# Normalize the slice to the range [0, 1]
+normalized_slice = (selected_slice - np.min(selected_slice)) / (np.max(selected_slice) - np.min(selected_slice))
+
+# Rotate 90 degrees counterclockwise
+rotated_slice = np.rot90(normalized_slice, k=1)
+
+# Flip left to right
+flipped_slice = np.fliplr(rotated_slice)
+
+# Expand dimensions to add the batch size dimension
+flipped_slice_expanded = np.expand_dims(flipped_slice, axis=0)
+
+# Now 'flipped_slice_expanded' is correctly oriented and ready to be input into the model
+print(flipped_slice_expanded.shape)
+skull_stripped = model.predict(flipped_slice_expanded)
+
+# Select the specific outputs you're interested in
+important_outputs = [skull_stripped[5], skull_stripped[11], skull_stripped[17]]  # Python uses 0-based indexing
+
+# Function to normalize a NumPy array to the range [0, 1]
+def normalize_array(array):
+    return (array - np.min(array)) / (np.max(array) - np.min(array))
+
+fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+titles = ['Brain Mask', 'Complement', 'Reconstruction']
+
+for i, output in enumerate(important_outputs):
+    normalized_output = normalize_array(output[0, :, :, 0])
+    axs[i].imshow(normalized_output, cmap='gray')
+    axs[i].set_title(titles[i])
+    axs[i].axis('off')
+plt.tight_layout()
+plt.show()
 
 
-# In[29]:
+# # In[62]:
+# X_train=np.load("/Users/ravinduhettiarachchi/Documents/FYP/MyCode/3DCompNet/x_train.npy")
+# X_train=X_train.reshape(X_train.shape+(1,))
+# y_train=np.load("/Users/ravinduhettiarachchi/Documents/FYP/MyCode/3DCompNet/y_train.npy")
+# y_test=np.load("/Users/ravinduhettiarachchi/Documents/FYP/MyCode/3DCompNet/y_test.npy")
+# x_test = np.load("/Users/ravinduhettiarachchi/Documents/FYP/MyCode/3DCompNet/x_test.npy")
+# loss, acc = model.evaluate(x_test, y_test, verbose=2)
+
+#model.predict("")
+#print('Restored model, accuracy: {:5.2f}%'.format(100 * acc))
+# model.fit([X_train], [y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,y_train,X_train,X_train,X_train,X_train,X_train,X_train],
+#                   batch_size=4,
+#                   nb_epoch=10,
+#                         #validation_data=([X2_validate],[y_validate]),
+#                   shuffle=True)
+#                         #callbacks=[xyz],
+#                         #class_weight=class_weightt)
+
+
+# # In[29]:
 
 
 
-import h5py
-#model.save_weights("basic_unet_weights.h5")
-model.save('dense_comp_net_dsp.h5')
+# import h5py
+# #model.save_weights("basic_unet_weights.h5")
+# model.save('dense_comp_net_dsp.h5')
 
